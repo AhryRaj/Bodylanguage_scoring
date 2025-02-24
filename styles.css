@@ -70,6 +70,7 @@ video {
   height: 100%;
   object-fit: cover;
   z-index: 0; /* Lower layer */
+  transform: scaleX(-1); /* Flip the video horizontally */
 }
 
 .output_canvas {
@@ -80,6 +81,7 @@ video {
   height: 100%;
   z-index: 1; /* Top layer */
   pointer-events: none; /* Allow interaction with video */
+  transform: none; /* Ensure canvas is not flipped */
 }
 
 video,

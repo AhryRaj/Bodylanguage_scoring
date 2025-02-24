@@ -361,6 +361,7 @@ async function predictWebcam() {
     canvasCtx.restore();
     canvasCtx.fillStyle = 'red';
     canvasCtx.font = '60px Arial';
+    canvasCtx.textAlign = 'left';
     canvasCtx.fillText('No Face Detected', 10, 60);
     
     // New score decay implementation
