@@ -1,4 +1,4 @@
-// Updated script3.js with frame count and decay fixes
+// Updated script.js with improved gaze scoring for eye movement
 import vision from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3";
 const { FaceLandmarker, FilesetResolver } = vision;
 
@@ -29,17 +29,17 @@ const ADAPTIVE_FRAMES = 30;
 const MAX_HEAD_ANGLE = 25;
 const FACE_BOUNDS_RATIO = { min: 0.7, max: 1.3 };
 
-// Enhanced deviation penalties
+// Enhanced deviation penalties for gaze
 const deviationPenalty = {
   horizontal: {
-    left: 0.2,
+    left: 0.1,   // Stricter penalty for left gaze
     center: 1.0,
-    right: 0.2
+    right: 0.1   // Stricter penalty for right gaze
   },
   vertical: {
-    up: 0.2,
+    up: 0.1,     // Stricter penalty for upward gaze
     center: 1.0,
-    down: 0.2
+    down: 0.1    // Stricter penalty for downward gaze
   }
 };
 
@@ -160,13 +160,23 @@ function calculateHeadScore(rotation) {
 }
 
 function calculateGazeScore(gaze) {
-  const hPenalty = deviationPenalty.horizontal[gaze.left.horizontal];
-  const vPenalty = deviationPenalty.vertical[gaze.left.vertical];
-  
-  if (gaze.left.horizontal !== 'center' && gaze.left.vertical !== 'center') {
-    return hPenalty * vPenalty * 0.8;
+  const leftHPenalty = deviationPenalty.horizontal[gaze.left.horizontal];
+  const leftVPenalty = deviationPenalty.vertical[gaze.left.vertical];
+  const rightHPenalty = deviationPenalty.horizontal[gaze.right.horizontal];
+  const rightVPenalty = deviationPenalty.vertical[gaze.right.vertical];
+
+  // Average penalties for both eyes
+  const hPenalty = (leftHPenalty + rightHPenalty) / 2;
+  const vPenalty = (leftVPenalty + rightVPenalty) / 2;
+
+  // Stricter scoring: penalize more when eyes deviate from center
+  let baseScore = hPenalty * vPenalty;
+  if (gaze.left.horizontal !== 'center' || gaze.left.vertical !== 'center' ||
+      gaze.right.horizontal !== 'center' || gaze.right.vertical !== 'center') {
+    baseScore *= 0.7; // Additional penalty for any off-center gaze
   }
-  return hPenalty * vPenalty;
+
+  return baseScore;
 }
 
 function isFaceForward(landmarks) {
@@ -301,12 +311,11 @@ function calibrateForGlasses(landmarks) {
       scoringStarted = true; // Start scoring after calibration
     }
   }
-
 }
 
 // Detect Glasses Function
 function detectGlasses(blendshapes) {
-  if (!Array.isArray(blendshapes)) return false; // Ensure blendshapes is an array
+  if (!Array.isArray(blendshapes)) return false;
   const glassesCategories = ['eyeGlasses', 'darkGlasses'];
   for (let category of glassesCategories) {
     const score = blendshapes.find(b => b.categoryName === category)?.score || 0;
@@ -354,6 +363,7 @@ async function predictWebcam() {
       );
 
       updateScores(eyeScore, headScore, gaze);
+      provideRealTimeFeedback(eyeScore, headScore);
     } else {
       calibrateForGlasses(landmarks);
     }
@@ -364,9 +374,8 @@ async function predictWebcam() {
     canvasCtx.textAlign = 'left';
     canvasCtx.fillText('No Face Detected', 10, 60);
     
-    // New score decay implementation
     if (scoringStarted) {
-      updateScores(0, 0, null); // Add zero scores for this frame
+      updateScores(0, 0, null);
     }
   }
   
@@ -380,24 +389,22 @@ const MOVEMENT_PENALTY = 0.2;
 let movementHistory = [];
 
 function detectMicroMovements(currentGaze) {
-  if (!currentGaze) return 0; // Add null check
+  if (!currentGaze) return 0;
   let penalty = 0;
   
   movementHistory.push(currentGaze);
-  if (movementHistory.length > 5) movementHistory.shift(); // Fixed typo
+  if (movementHistory.length > 5) movementHistory.shift();
 
-  // Detect horizontal movement changes
   if (currentGaze.left.horizontal !== lastGazeDirection.left.horizontal ||
       currentGaze.right.horizontal !== lastGazeDirection.right.horizontal) {
     penalty += MOVEMENT_PENALTY;
   }
 
-  // Detect vertical movement changes
   if (currentGaze.left.vertical !== lastGazeDirection.left.vertical ||
       currentGaze.right.vertical !== lastGazeDirection.right.vertical) {
     penalty += MOVEMENT_PENALTY;
   }
 
   lastGazeDirection = currentGaze;
-  return Math.min(penalty, 0.4);  // Max penalty of 40%
+  return Math.min(penalty, 0.4); // Max penalty of 40%
 }
